@@ -1,24 +1,37 @@
 import pygame
 import random
 import time
-from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, USE_ML_AGENTS
 from classes.deck import Deck
 from classes.player import Player
 from classes.bot import Bot
 from classes.renderer import Renderer
 from utils import load_card_art
 
+# Conditionally import MLAgent if needed
+if USE_ML_AGENTS:
+    from classes.ml_agent import MLAgent
+
 class Game:
     def __init__(self, screen):
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.running = True
-        self.players = [
-            Player("You"),
-            Bot("Bot 1"),
-            Bot("Bot 2"),
-            Bot("Bot 3")
-        ]
+        self.all_played_cards = [] # A global record of all cards played during this hand
+        if USE_ML_AGENTS:
+            self.players = [
+                Player("You"),
+                MLAgent("ML Agent 1"),
+                MLAgent("ML Agent 2"),
+                MLAgent("ML Agent 3")
+            ]
+        else:
+            self.players = [
+                Player("You"),
+                Bot("Bot 1"),
+                Bot("Bot 2"),
+                Bot("Bot 3")
+            ]
         self.deck = Deck()
         self.card_art = load_card_art()  # Ensure this is a dictionary
         self.font = pygame.font.Font(pygame.font.match_font('couriernew'), 16)  # Fixed-width font
@@ -84,8 +97,12 @@ class Game:
     def handle_bidding_events(self):
         self.process_events(self.handle_bidding_keydown, self.handle_bidding_click)
         current_player = self.players[self.active_player]
-        if isinstance(current_player, Bot):
-            bid_card = current_player.bid_selected_card()
+        if isinstance(current_player, (Bot,)):
+            # For MLAgents that inherit from Bot, this will work.
+            bid_card = current_player.bid_selected_card(
+                            global_played=self.all_played_cards,
+                            tricks_played=self.tricks_played,
+                            dealer_index=self.dealer_index)
             self.bids[self.active_player] = bid_card
             print(f"{current_player.name} bids {bid_card} (wishes to go {'high' if bid_card.color == 'black' else 'low'})!")
             if bid_card.color == 'black' and self.granded_player is None:
@@ -99,7 +116,8 @@ class Game:
                 self.advance_bidding()
             self.draw()
             pygame.display.flip()
-            pygame.time.delay(500)  # Wait 500 milliseconds
+            pygame.time.delay(500)
+
 
     def advance_bidding(self):
         self.active_player = (self.active_player + 1) % 4
@@ -221,6 +239,9 @@ class Game:
     def next_player(self):
         if len(self.current_trick) == 4:
             self.evaluate_trick()
+            # Append the trick's cards to the global list:
+            for _, card in self.current_trick:
+                self.all_played_cards.append(str(card))
             self.current_trick = []
             self.tricks_played += 1
             if self.tricks_played == 13:
@@ -246,10 +267,8 @@ class Game:
         for i, player in enumerate(self.players):
             print(f"{player.name}: {self.tricks_won[i]}")
 
-        team1_tricks = self.tricks_won[0] + self.tricks_won[2]
-        team2_tricks = self.tricks_won[1] + self.tricks_won[3]
-
         if self.game_mode == 'HIGH':
+            # Existing high game scoring logic...
             granded_team = [self.granded_player, (self.granded_player + 2) % 4]
             granded_team_tricks = sum(self.tricks_won[i] for i in granded_team)
             other_team_tricks = 13 - granded_team_tricks
@@ -264,17 +283,22 @@ class Game:
                     print(f"Other team ({self.players[(granded_team[0]+1)%4].name} and {self.players[(granded_team[0]+3)%4].name}) score {score} point(s)")
                 else:
                     print(f"Other team does not score any points")
-        else:
-            if team1_tricks < 7:
-                score = 7 - team1_tricks
-                print(f"Team 1 ({self.players[0].name} and {self.players[2].name}) score {score} point(s)")
+        else:  # game_mode == 'LOW'
+            # Determine the bidding team. In a low game, the bidding team is the player
+            # immediately left of the dealer and their partner.
+            bidder_index = (self.dealer_index + 1) % 4
+            bidding_team = [bidder_index, (bidder_index + 2) % 4]
+            opponent_team = [(bidder_index + 1) % 4, (bidder_index + 3) % 4]
+            
+            bidding_team_tricks = self.tricks_won[bidding_team[0]] + self.tricks_won[bidding_team[1]]
+            
+            if bidding_team_tricks <= 6:
+                score = 6 - bidding_team_tricks
+                print(f"Bidding team ({self.players[bidding_team[0]].name} and {self.players[bidding_team[1]].name}) make their contract and score {score} point(s)")
             else:
-                print(f"Team 1 does not score any points")
-            if team2_tricks < 7:
-                score = 7 - team2_tricks
-                print(f"Team 2 ({self.players[1].name} and {self.players[3].name}) score {score} point(s)")
-            else:
-                print(f"Team 2 does not score any points")
+                score = 2 * (bidding_team_tricks - 6)
+                print(f"Bidding team ({self.players[bidding_team[0]].name} and {self.players[bidding_team[1]].name}) went set. Opponents ({self.players[opponent_team[0]].name} and {self.players[opponent_team[1]].name}) score {score} point(s)")
+
 
     def draw(self):
         self.screen.fill((0, 0, 0))

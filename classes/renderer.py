@@ -45,7 +45,7 @@ class Renderer:
         game_state_and_player_turn = f"{game_state}"
         text_surface = self.font.render(game_state_and_player_turn, True, (255, 165, 0))
         text_rect = text_surface.get_rect()
-        self.screen.blit(text_surface, text_rect)
+        self.screen.blit(text_surface, text_rect) 
 
     def draw_selected_card_info(self, selected_card):
         if selected_card:
