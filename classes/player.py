@@ -49,13 +49,12 @@ class Player:
     def select_card(self, pos, renderer):
         num_cards = len(self.hand)
         if num_cards == 0:
-            return
+            return False
         max_width = SCREEN_WIDTH - 10  # total available width
         card_widths = [renderer.calculate_card_width(card) for card in self.hand]
         if not card_widths:
-            return
+            return False
         card_width = max(card_widths)
-
         # Adjust overlap if the total width exceeds the screen width
         total_cards_width = num_cards * card_width
         if total_cards_width > max_width:
@@ -63,19 +62,20 @@ class Player:
             total_cards_width = card_width + (num_cards - 1) * (card_width - overlap)  # Adjust total width to include overlap
         else:
             overlap = 0  # no overlap if within screen width
-
         # Calculate the starting x position to center the cards
         x_position = (SCREEN_WIDTH - total_cards_width) // 2
         y_position = SCREEN_HEIGHT - 120
-
         # Hitbox detection for each card
         for i, card in enumerate(self.hand):
             card_rect = pygame.Rect(x_position, y_position, card_width - overlap, 100)  # Use adjusted card width
             if card_rect.collidepoint(pos):
                 self.selected_card = card
                 self.selected_card_index = i
-                break
+                return True
             x_position += card_width - overlap  # Move to the next card position
+        self.selected_card = None
+        self.selected_card_index = None
+        return False
 
     def play_selected_card(self):
         if self.selected_card:

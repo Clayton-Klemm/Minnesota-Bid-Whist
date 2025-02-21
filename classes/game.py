@@ -15,6 +15,7 @@ if USE_ML_AGENTS:
 class Game:
     def __init__(self, screen):
         self.screen = screen
+        self.next_action = None # For tracking user's end-game choice
         self.clock = pygame.time.Clock()
         self.running = True
         self.all_played_cards = [] # A global record of all cards played during this hand
@@ -36,8 +37,6 @@ class Game:
         self.card_art = load_card_art()  # Ensure this is a dictionary
         self.font = pygame.font.Font(pygame.font.match_font('couriernew'), 16)  # Fixed-width font
         self.renderer = Renderer(self.screen, self.font, self.card_art)
-        self.double_click_threshold = 250  # milliseconds required to play the card
-        self.last_click_time = 0
         self.game_state = 'BIDDING'  # Initial game state
         self.bids = [None] * 4  # Store bids decisions of each player
         self.game_mode = None  # Will be set after bidding phase ('HIGH' or 'LOW')
@@ -81,6 +80,7 @@ class Game:
                 self.waiting_for = 'NEW_ROUND'
             self.draw()
             self.clock.tick(FPS)
+        return self.next_action # Return the user's choice after the loop ends
 
     def process_events(self, keydown_handler, click_handler):
         for event in pygame.event.get():
@@ -93,16 +93,23 @@ class Game:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if not isinstance(self.players[self.active_player], Bot):
                     click_handler(event.pos)
+            elif event.type == pygame.MOUSEMOTION:
+                if not isinstance(self.players[self.active_player], Bot):
+                    self.handle_mouse_motion(event.pos)
 
     def handle_bidding_events(self):
         self.process_events(self.handle_bidding_keydown, self.handle_bidding_click)
         current_player = self.players[self.active_player]
-        if isinstance(current_player, (Bot,)):
-            # For MLAgents that inherit from Bot, this will work.
+        if isinstance(current_player, Bot):
+            bidding_order = [(self.dealer_index + 1 + i) % 4 for i in range(4)]
+            current_index = bidding_order.index(self.active_player)
+            previous_bids = [(bidding_order[j], self.bids[bidding_order[j]]) for j in range(current_index) if self.bids[bidding_order[j]] is not None]
             bid_card = current_player.bid_selected_card(
-                            global_played=self.all_played_cards,
-                            tricks_played=self.tricks_played,
-                            dealer_index=self.dealer_index)
+                global_played=self.all_played_cards,
+                tricks_played=self.tricks_played,
+                dealer_index=self.dealer_index,
+                previous_bids=previous_bids
+            )
             self.bids[self.active_player] = bid_card
             print(f"{current_player.name} bids {bid_card} (wishes to go {'high' if bid_card.color == 'black' else 'low'})!")
             if bid_card.color == 'black' and self.granded_player is None:
@@ -118,6 +125,9 @@ class Game:
             pygame.display.flip()
             pygame.time.delay(500)
 
+    def handle_mouse_motion(self, pos):
+        if self.game_state in ['BIDDING', 'PLAYING']:
+            self.players[self.active_player].select_card(pos, self.renderer)
 
     def advance_bidding(self):
         self.active_player = (self.active_player + 1) % 4
@@ -142,7 +152,14 @@ class Game:
         self.process_events(self.handle_keydown, self.handle_click)
         current_player = self.players[self.active_player]
         if isinstance(current_player, Bot):
-            card_played = current_player.play_card(self.current_trick, self.game_mode)
+            card_played = current_player.play_card(
+            self.current_trick,
+            self.game_mode,
+            self.bids,
+            self.all_played_cards,
+            self.tricks_played,
+            self.tricks_won
+        )
             if card_played:
                 self.current_trick.append((self.active_player, card_played))
                 print(f"{current_player.name} plays {card_played}")
@@ -152,20 +169,30 @@ class Game:
                 self.next_player()
 
     def handle_waiting_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-                self.game_state = 'END'
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                pos = event.pos
-                if self.renderer.is_continue_button_clicked(pos):
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    self.next_action = 'QUIT'
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = event.pos
                     if self.waiting_for == 'PLAYING':
-                        self.game_state = 'PLAYING'
+                        if self.renderer.is_continue_button_clicked(pos):
+                            self.game_state = 'PLAYING'
+                            self.waiting_for = None
                     elif self.waiting_for == 'NEW_ROUND':
-                        self.dealer_index = (self.dealer_index + 1) % 4  # Move dealer to next player
-                        self.initialize_game()
-                        self.game_state = 'BIDDING'
-                    self.waiting_for = None
+                        option = self.renderer.get_clicked_option(pos)
+                        if option is not None:
+                            if option == 0:  # Play Another Round
+                                self.dealer_index = (self.dealer_index + 1) % 4
+                                self.initialize_game()
+                                self.game_state = 'BIDDING'
+                                self.waiting_for = None
+                            elif option == 1:  # Return to Title Screen
+                                self.running = False
+                                self.next_action = 'TITLE'
+                            elif option == 2:  # Quit Game
+                                self.running = False
+                                self.next_action = 'QUIT'
 
     def handle_keydown_generic(self, key, action_function):
         if key == pygame.K_LEFT:
@@ -181,20 +208,13 @@ class Game:
     def handle_bidding_keydown(self, key):
         self.handle_keydown_generic(key, self.bid_selected_card)
 
-    def handle_click_generic(self, pos, action_function):
-        current_click_time = time.time()
-        time_since_last_click = (current_click_time - self.last_click_time) * 1000  # Convert to milliseconds
-        if time_since_last_click <= self.double_click_threshold:
-            action_function()
-        else:
-            self.players[self.active_player].select_card(pos, self.renderer)
-        self.last_click_time = current_click_time
-
     def handle_click(self, pos):
-        self.handle_click_generic(pos, self.play_selected_card)
+        if self.players[self.active_player].select_card(pos, self.renderer):
+            self.play_selected_card()
 
     def handle_bidding_click(self, pos):
-        self.handle_click_generic(pos, self.bid_selected_card)
+        if self.players[self.active_player].select_card(pos, self.renderer):
+            self.bid_selected_card()
 
     def bid_selected_card(self):
         bid_card = self.players[self.active_player].bid_selected_card()
@@ -301,28 +321,44 @@ class Game:
 
 
     def draw(self):
+        # Clear the screen with black background
         self.screen.fill((0, 0, 0))
+
+        # Determine lead_suit based on game state (used for rendering the hand)
+        if self.game_state == 'PLAYING' and self.current_trick:
+            lead_suit = self.current_trick[0][1].suit
+        else:
+            lead_suit = None
+
+        # Always draw the human player's hand (assuming index 0 is the human player)
+        human_player = self.players[0]
+        self.renderer.draw_hand(human_player.hand, human_player.selected_card, lead_suit)
+
+        # Draw game state-specific elements
         if self.game_state == 'BIDDING':
-            self.draw_players_hands()
-            self.renderer.draw_game_state_and_player_turn_status(self.game_state, self.players[self.active_player].name)
+            self.renderer.draw_game_state_and_player_turn_status(
+                self.game_state, self.players[self.active_player].name
+            )
             self.renderer.draw_selected_card_info(self.players[self.active_player].selected_card)
             self.renderer.draw_bids(self.bids, self.players)
         elif self.game_state == 'PLAYING':
-            self.draw_players_hands()
-            self.renderer.draw_game_state_and_player_turn_status(self.game_state, self.players[self.active_player].name)
+            self.renderer.draw_game_state_and_player_turn_status(
+                self.game_state, self.players[self.active_player].name
+            )
             self.renderer.draw_selected_card_info(self.players[self.active_player].selected_card)
             self.renderer.draw_current_trick(self.current_trick, self.players)
             self.renderer.draw_tricks_won(self.tricks_won, self.players)
             self.renderer.draw_players_names(self.players)
         elif self.game_state == 'WAITING':
             if self.waiting_for == 'PLAYING':
-                self.draw_players_hands()
                 self.renderer.draw_game_state_and_player_turn_status('Bidding Complete', '')
                 self.renderer.draw_bids(self.bids, self.players)
                 self.renderer.draw_players_names(self.players)
+                self.renderer.draw_continue_button()
             elif self.waiting_for == 'NEW_ROUND':
                 self.renderer.draw_game_result(self.tricks_won, self.players, self.game_mode, self.granded_player)
-            self.renderer.draw_continue_button()
+                self.renderer.draw_end_game_options()
+        # Update the display (batch all drawing operations)
         pygame.display.flip()
 
     def draw_players_hands(self):

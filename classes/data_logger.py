@@ -1,4 +1,3 @@
-# data_logger.py
 import csv
 import os
 import datetime
@@ -8,18 +7,20 @@ LOG_FILE = "ml_decisions.csv"
 def log_decision(decision_data):
     file_exists = os.path.isfile(LOG_FILE)
     fieldnames = [
-        "timestamp", 
-        "agent", 
-        "phase", 
-        "hand", 
-        "current_trick", 
-        "game_mode", 
-        "bid_choice", 
-        "selected_card", 
-        "seen_cards", 
-        "my_played_cards", 
+        "timestamp",
+        "agent",
+        "phase",
+        "hand",
+        "previous_bids",  # Bidding phase
+        "bid_choice",     # Bidding phase
+        "selected_card",
+        "current_trick",  # Playing phase
+        "game_mode",      # Playing phase
+        "bids",           # Playing phase
+        "my_played_cards",
         "global_played_cards",
         "tricks_played",
+        "tricks_won",     # Playing phase
         "dealer_index"
     ]
     

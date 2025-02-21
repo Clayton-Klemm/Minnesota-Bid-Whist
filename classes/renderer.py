@@ -7,7 +7,7 @@ class Renderer:
         self.font = font
         self.card_art = card_art
 
-    def draw_hand(self, hand, selected_card):
+    def draw_hand(self, hand, selected_card, lead_suit=None):
         num_cards = len(hand)
         if num_cards == 0:
             return
@@ -32,7 +32,13 @@ class Renderer:
             card_key = f"{card.rank}{card.suit}"
             card_art_piece = self.card_art.get(card_key, "")
             lines = card_art_piece.split('\n')
-            card_color = (0, 255, 0) if card == selected_card else (255, 255, 255)
+            # Determine card color based on selection and lead suit
+            if card == selected_card:
+                card_color = (0, 255, 0)  # Green for selected card
+            elif lead_suit and card.suit == lead_suit:
+                card_color = (0, 255, 255)  # Cyan for lead suit
+            else:
+                card_color = (255, 255, 255)  # White for other cards
             # Use the raised Y position if the card is selected
             current_y_position = selected_y_position if card == selected_card else y_position
             for k, line in enumerate(lines):
@@ -172,4 +178,20 @@ class Renderer:
             y_position += 30
         # Display scores or other info as needed
 
+    def draw_end_game_options(self):
+            options = ["Play Another Round", "Return to Title Screen", "Quit Game"]
+            self.option_rects = []
+            for i, option in enumerate(options):
+                button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, 400 + i * 60, 200, 50)
+                pygame.draw.rect(self.screen, (0, 255, 0), button_rect)  # Green buttons
+                text_surface = self.font.render(option, True, (0, 0, 0))  # Black text
+                text_rect = text_surface.get_rect(center=button_rect.center)
+                self.screen.blit(text_surface, text_rect)
+                self.option_rects.append(button_rect)  # Store rectangles for click detection
 
+    def get_clicked_option(self, pos):
+        if hasattr(self, 'option_rects'):
+            for i, rect in enumerate(self.option_rects):
+                if rect.collidepoint(pos):
+                    return i  # Return index of clicked option (0, 1, or 2)
+        return None  # No option clicked
