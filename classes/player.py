@@ -91,7 +91,6 @@ class Player:
     def bid_selected_card(self):
         if self.selected_card:
             bid_card = self.selected_card
-            print(f"{self.name} bids {bid_card} (wishes to go {'high' if bid_card.color == 'black' else 'low'})!")
             self.selected_card = None
             self.selected_card_index = None
             return bid_card

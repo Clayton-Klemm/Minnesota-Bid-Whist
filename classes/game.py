@@ -18,6 +18,7 @@ class Game:
         self.next_action = None # For tracking user's end-game choice
         self.clock = pygame.time.Clock()
         self.running = True
+        self.player_has_bid = [False] * 4  # Track whether each player has bid
         self.all_played_cards = [] # A global record of all cards played during this hand
         if USE_ML_AGENTS:
             self.players = [
@@ -52,6 +53,7 @@ class Game:
     def initialize_game(self):
         self.deck = Deck()
         self.deck.shuffle()
+        self.player_has_bid = [False] * 4
         self.hands = self.deck.deal(4, 13)
         for i, player in enumerate(self.players):
             player.hand = player.group_and_sort_hand(self.hands[i])
@@ -98,9 +100,11 @@ class Game:
                     self.handle_mouse_motion(event.pos)
 
     def handle_bidding_events(self):
+        # Reset bid flag for the current player
+        self.player_has_bid[self.active_player] = False
         self.process_events(self.handle_bidding_keydown, self.handle_bidding_click)
         current_player = self.players[self.active_player]
-        if isinstance(current_player, Bot):
+        if isinstance(current_player, Bot) and not self.player_has_bid[self.active_player]:
             bidding_order = [(self.dealer_index + 1 + i) % 4 for i in range(4)]
             current_index = bidding_order.index(self.active_player)
             previous_bids = [(bidding_order[j], self.bids[bidding_order[j]]) for j in range(current_index) if self.bids[bidding_order[j]] is not None]
@@ -112,6 +116,7 @@ class Game:
             )
             self.bids[self.active_player] = bid_card
             print(f"{current_player.name} bids {bid_card} (wishes to go {'high' if bid_card.color == 'black' else 'low'})!")
+            self.player_has_bid[self.active_player] = True
             if bid_card.color == 'black' and self.granded_player is None:
                 self.granded_player = self.active_player
                 self.game_mode = 'HIGH'
@@ -217,10 +222,13 @@ class Game:
             self.bid_selected_card()
 
     def bid_selected_card(self):
+        if self.player_has_bid[self.active_player]:
+            return  # Player has already bid, ignore further bids
         bid_card = self.players[self.active_player].bid_selected_card()
         if bid_card:
             self.bids[self.active_player] = bid_card
             print(f"{self.players[self.active_player].name} bids {bid_card} (wishes to go {'high' if bid_card.color == 'black' else 'low'})!")
+            self.player_has_bid[self.active_player] = True
             if bid_card.color == 'black' and self.granded_player is None:
                 self.granded_player = self.active_player
                 self.game_mode = 'HIGH'
@@ -323,7 +331,8 @@ class Game:
     def draw(self):
         # Clear the screen with black background
         self.screen.fill((0, 0, 0))
-
+        # Always draw player names regardless of game state
+        self.renderer.draw_players_names(self.players)
         # Determine lead_suit based on game state (used for rendering the hand)
         if self.game_state == 'PLAYING' and self.current_trick:
             lead_suit = self.current_trick[0][1].suit
@@ -365,7 +374,6 @@ class Game:
         if len(self.players) != 4:
             print("Error: incorrect number of players")
             return
-        # self.renderer.draw_hand(self.players[self.active_player].hand, self.players[self.active_player].selected_card)
         
         human_player = self.players[0]  # Assuming the human player is always at index 0
         self.renderer.draw_hand(human_player.hand, human_player.selected_card)
