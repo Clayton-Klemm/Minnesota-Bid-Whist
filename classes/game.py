@@ -88,7 +88,7 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-                self.game_state = 'END'
+                self.next_action = 'QUIT'  # Signal to quit the application
             elif event.type == pygame.KEYDOWN:
                 if not isinstance(self.players[self.active_player], Bot):
                     keydown_handler(event.key)
@@ -174,30 +174,30 @@ class Game:
                 self.next_player()
 
     def handle_waiting_events(self):
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    self.next_action = 'QUIT'
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    pos = event.pos
-                    if self.waiting_for == 'PLAYING':
-                        if self.renderer.is_continue_button_clicked(pos):
-                            self.game_state = 'PLAYING'
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+                self.next_action = 'QUIT'  # Signal to quit the application
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                pos = event.pos
+                if self.waiting_for == 'PLAYING':
+                    if self.renderer.is_continue_button_clicked(pos):
+                        self.game_state = 'PLAYING'
+                        self.waiting_for = None
+                elif self.waiting_for == 'NEW_ROUND':
+                    option = self.renderer.get_clicked_option(pos)
+                    if option is not None:
+                        if option == 0:  # Play Another Round
+                            self.dealer_index = (self.dealer_index + 1) % 4
+                            self.initialize_game()
+                            self.game_state = 'BIDDING'
                             self.waiting_for = None
-                    elif self.waiting_for == 'NEW_ROUND':
-                        option = self.renderer.get_clicked_option(pos)
-                        if option is not None:
-                            if option == 0:  # Play Another Round
-                                self.dealer_index = (self.dealer_index + 1) % 4
-                                self.initialize_game()
-                                self.game_state = 'BIDDING'
-                                self.waiting_for = None
-                            elif option == 1:  # Return to Title Screen
-                                self.running = False
-                                self.next_action = 'TITLE'
-                            elif option == 2:  # Quit Game
-                                self.running = False
-                                self.next_action = 'QUIT'
+                        elif option == 1:  # Return to Title Screen
+                            self.running = False
+                            self.next_action = 'TITLE'
+                        elif option == 2:  # Quit Game
+                            self.running = False
+                            self.next_action = 'QUIT'
 
     def handle_keydown_generic(self, key, action_function):
         if key == pygame.K_LEFT:

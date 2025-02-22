@@ -16,7 +16,7 @@ def main():
             game = Game(screen)
             result = game.run()
             if result == 'QUIT':
-                break
+                break  # Breaks the loop and calls pygame.quit()
             elif result == 'TITLE':
                 continue  # Return to title screen
         elif choice == 1:  # Settings
